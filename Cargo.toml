@@ -1,0 +1,8 @@
+[package]
+name = "wayback"
+version = "0.1.0"
+authors = ["Xiphoseer"]
+edition = "2018"
+
+[dependencies]
+urlencoding = "1"
