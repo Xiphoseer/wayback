@@ -11,7 +11,7 @@ mod sealed {
 /// The base URL for the timemap of the Internet Archives' Wayback Machine
 ///
 /// i.e. `https://web.archive.org/web/timemap/?`
-pub const TIMEMAP_BASE: &'static str = "https://web.archive.org/web/timemap/?";
+pub const TIMEMAP_BASE: &str = "https://web.archive.org/web/timemap/?";
 
 /// Restriction the returned items **before** collapsing/grouping
 pub struct Filter<'a> {
@@ -22,13 +22,13 @@ pub struct Filter<'a> {
 
 impl<'a> Filter<'a> {
     fn parse_from_str(s: &'a str) -> Result<Self, ParseFilterError> {
-        let (invert, input) = if s.starts_with("!") {
+        let (invert, input) = if s.starts_with('!') {
             (true, s /*.split_at(1).1*/)
         } else {
             (false, s)
         };
 
-        let mut split = input.splitn(2, ":");
+        let mut split = input.splitn(2, ':');
         let field: Field = if let Some(f) = split.next() {
             f.parse().map_err(ParseFilterError::UnknownField)?
         } else {
@@ -62,7 +62,7 @@ pub struct FilterBuf {
 }
 
 impl FilterBuf {
-    pub fn as_ref<'a>(&'a self) -> Filter<'a> {
+    pub fn as_ref(&self) -> Filter {
         Filter {
             invert: self.invert,
             field: self.field,
