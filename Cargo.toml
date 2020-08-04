@@ -1,8 +1,11 @@
 [package]
-name = "wayback"
+name = "wayback-urls"
 version = "0.1.0"
 authors = ["Xiphoseer"]
 edition = "2018"
+license = "MPL-2.0"
+readme = "README.md"
+description = "URL builder for the Internet Archives' Wayback-Machine"
 
 [dependencies]
 urlencoding = "1"

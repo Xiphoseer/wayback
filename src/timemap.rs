@@ -1,11 +1,16 @@
-use std::{fmt, marker::PhantomData, str::FromStr};
+use std::{error::Error, fmt, marker::PhantomData, str::FromStr};
 
 mod sealed {
+    /// Trait to mark that all possible values have a fixed string representation
+    pub trait ToStaticStr {
+        fn to_static_str(&self) -> &'static str;
+    }
+
     /// Marker Trait for the typestate pattern in a [`RequestBuilder`]
     ///
     /// [`RequestBuilder`]: ../struct.RequestBuilder.html
     pub trait RequestState {}
-    pub trait RequestField: super::ToStaticStr + Into<super::AnyField> {}
+    pub trait RequestField: ToStaticStr + Into<super::AnyField> {}
 }
 
 /// The base URL for the timemap of the Internet Archives' Wayback Machine
@@ -13,7 +18,11 @@ mod sealed {
 /// i.e. `https://web.archive.org/web/timemap/?`
 pub const TIMEMAP_BASE: &str = "https://web.archive.org/web/timemap/?";
 
-/// Restriction the returned items **before** collapsing/grouping
+/// Restriction of the returned items **before** collapsing/grouping
+///
+/// The notation for a filter is `"!"? FIELD ":" REGEX`, i.e.
+/// an optional negation, the field that it applies to and a regex
+/// that the server will used to match on the value.
 pub struct Filter<'a> {
     invert: bool,
     field: Field,
@@ -21,7 +30,8 @@ pub struct Filter<'a> {
 }
 
 impl<'a> Filter<'a> {
-    fn parse_from_str(s: &'a str) -> Result<Self, ParseFilterError> {
+    /// Parses a filter from a borrowed string
+    pub fn parse_from_str(s: &'a str) -> Result<Self, ParseFilterError> {
         let (invert, input) = if s.starts_with('!') {
             (true, s /*.split_at(1).1*/)
         } else {
@@ -46,6 +56,7 @@ impl<'a> Filter<'a> {
         }
     }
 
+    /// Create an owned ('static) version of this filter
     pub fn to_owned(&self) -> FilterBuf {
         FilterBuf {
             invert: self.invert,
@@ -55,6 +66,7 @@ impl<'a> Filter<'a> {
     }
 }
 
+/// An owned (`'static`) variant of [`Filter`](struct.Filter.html)
 pub struct FilterBuf {
     invert: bool,
     field: Field,
@@ -62,6 +74,9 @@ pub struct FilterBuf {
 }
 
 impl FilterBuf {
+    /// Ìnverse of [`Filter::to_owned`]
+    ///
+    /// [`Filter::to_owned`]: struct.Filter.html#method.to_owned
     pub fn as_ref(&self) -> Filter {
         Filter {
             invert: self.invert,
@@ -72,10 +87,15 @@ impl FilterBuf {
 }
 
 #[derive(Debug)]
+/// An error returned from the `parse_from_str` function on [`Filter`].
+///
+/// [`Filter`]: struct.Filter.html
 pub enum ParseFilterError {
     MissingColon,
     UnknownField(UnknownFieldError),
 }
+
+impl Error for ParseFilterError {}
 
 impl fmt::Display for ParseFilterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -95,6 +115,7 @@ impl FromStr for FilterBuf {
 }
 
 impl<'a> Filter<'a> {
+    /// Creates a new filter that requires the given field to match the regex
     pub fn new(field: Field, regex: &'a str) -> Self {
         Self {
             invert: false,
@@ -103,6 +124,7 @@ impl<'a> Filter<'a> {
         }
     }
 
+    /// Creates a new filter that prohibits the given field to match the regex
     pub fn inverted(field: Field, regex: &'a str) -> Self {
         Self {
             invert: true,
@@ -115,7 +137,7 @@ impl<'a> Filter<'a> {
 /// A configured URL for a request to the wayback machines' timemap
 ///
 /// ```
-/// use wayback::timemap::{Request, Field::{Timestamp, StatusCode, UrlKey}};
+/// use wayback_urls::timemap::{Request, Field::{Timestamp, StatusCode, UrlKey}};
 ///
 /// let r = Request::builder("nexushq.universe.lego.com/en-us/character/details")
 ///                 .match_prefix()
@@ -154,6 +176,8 @@ impl<'a> Request<'a> {
 
     /// Return the URL that this request represents as an owned string
     pub fn to_url(&self) -> String {
+        use sealed::ToStaticStr;
+
         let mut url = TIMEMAP_BASE.to_string();
         url.push_str("url=");
         url.push_str(&urlencoding::encode(self.url));
@@ -337,6 +361,18 @@ pub enum Field {
 
 impl sealed::RequestField for Field {}
 
+/// Variant of [`ToStaticStr`] where one variant is the default choice and may be omitted
+///
+/// [`ToStaticStr`]: trait.ToStaticStr.html
+trait OptStaticStr {
+    fn opt_static_str(&self) -> Option<&'static str>;
+}
+
+/// Trait to mark that one possible value is considered the default
+trait HasDefaultVariant {
+    fn is_default(&self) -> bool;
+}
+
 /// Fields that are available when the result is collapsed/grouped
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum GroupField {
@@ -352,7 +388,7 @@ pub enum AnyField {
     Group(GroupField),
 }
 
-impl ToStaticStr for AnyField {
+impl sealed::ToStaticStr for AnyField {
     fn to_static_str(&self) -> &'static str {
         match self {
             Self::Basic(f) => f.to_static_str(),
@@ -375,24 +411,7 @@ impl From<GroupField> for AnyField {
 
 impl sealed::RequestField for GroupField {}
 
-/// Trait to mark that all possible values have a fixed string representation
-pub trait ToStaticStr {
-    fn to_static_str(&self) -> &'static str;
-}
-
-/// Variant of [`ToStaticStr`] where one variant is the default choice and may be omitted
-///
-/// [`ToStaticStr`]: trait.ToStaticStr.html
-pub trait OptStaticStr {
-    fn opt_static_str(&self) -> Option<&'static str>;
-}
-
-/// Trait to mark that one possible value is considered the default
-pub trait HasDefaultVariant {
-    fn is_default(&self) -> bool;
-}
-
-impl ToStaticStr for Field {
+impl sealed::ToStaticStr for Field {
     fn to_static_str(&self) -> &'static str {
         match self {
             Self::Original => "original",
@@ -411,6 +430,7 @@ impl ToStaticStr for Field {
 }
 
 #[derive(Debug)]
+/// An error returned from the `from_str` function on [`Field`](enum.Field.html).
 pub struct UnknownFieldError(String);
 
 impl fmt::Display for UnknownFieldError {
@@ -418,6 +438,8 @@ impl fmt::Display for UnknownFieldError {
         write!(f, "Unknown field name `{}`", self.0)
     }
 }
+
+impl Error for UnknownFieldError {}
 
 impl FromStr for Field {
     type Err = UnknownFieldError;
@@ -439,7 +461,7 @@ impl FromStr for Field {
     }
 }
 
-impl ToStaticStr for GroupField {
+impl sealed::ToStaticStr for GroupField {
     fn to_static_str(&self) -> &'static str {
         match self {
             Self::EndTimestamp => "endtimestamp",
@@ -479,7 +501,7 @@ impl OptStaticStr for MatchType {
     }
 }
 
-impl ToStaticStr for MatchType {
+impl sealed::ToStaticStr for MatchType {
     fn to_static_str(&self) -> &'static str {
         match self {
             Self::Exact => "exact",
@@ -515,7 +537,7 @@ impl OptStaticStr for Output {
     }
 }
 
-impl ToStaticStr for Output {
+impl sealed::ToStaticStr for Output {
     fn to_static_str(&self) -> &'static str {
         match self {
             Self::Default => "",
