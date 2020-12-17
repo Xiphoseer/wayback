@@ -186,7 +186,7 @@ impl<'a> Request<'a> {
             url.push_str("&fl=");
             url.push_str(s.to_static_str());
             for f in fl_iter {
-                url.push_str(",");
+                url.push(',');
                 url.push_str(f.to_static_str());
             }
         }
@@ -206,10 +206,10 @@ impl<'a> Request<'a> {
         for filter in filter_iter {
             url.push_str("&filter=");
             if filter.invert {
-                url.push_str("!");
+                url.push('!');
             }
             url.push_str(filter.field.to_static_str());
-            url.push_str(":");
+            url.push(':');
             url.push_str(filter.regex);
         }
         url
